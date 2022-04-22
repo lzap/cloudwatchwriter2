@@ -1,6 +1,7 @@
-package cloudwatchwriter_test
+package cloudwatchwriter2_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
-	"github.com/mec07/cloudwatchwriter"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
+	cloudwatchwriter "github.com/lzap/cloudwatchwriter2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
@@ -21,23 +22,24 @@ const sequenceToken = "next-sequence-token"
 type mockClient struct {
 	sync.RWMutex
 	putLogEventsShouldError bool
-	logEvents               []*cloudwatchlogs.InputLogEvent
+	logEvents               []types.InputLogEvent
 	logGroupName            *string
 	logStreamName           *string
 	expectedSequenceToken   *string
 }
 
-func (c *mockClient) DescribeLogStreams(*cloudwatchlogs.DescribeLogStreamsInput) (*cloudwatchlogs.DescribeLogStreamsOutput, error) {
+func (c *mockClient) DescribeLogStreams(ctx context.Context, input *cloudwatchlogs.DescribeLogStreamsInput, opts ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.DescribeLogStreamsOutput, error) {
 	c.RLock()
 	defer c.RUnlock()
 
-	if c.logGroupName == nil {
-		return nil, awserr.New(cloudwatchlogs.ErrCodeResourceNotFoundException, "blah", nil)
+	if input.LogGroupName == nil {
+		msg := "blah"
+		return nil, &types.ResourceNotFoundException{Message: &msg}
 	}
 
-	var streams []*cloudwatchlogs.LogStream
+	var streams []types.LogStream
 	if c.logStreamName != nil {
-		streams = append(streams, &cloudwatchlogs.LogStream{
+		streams = append(streams, types.LogStream{
 			LogStreamName:       c.logStreamName,
 			UploadSequenceToken: c.expectedSequenceToken,
 		})
@@ -48,7 +50,7 @@ func (c *mockClient) DescribeLogStreams(*cloudwatchlogs.DescribeLogStreamsInput)
 	}, nil
 }
 
-func (c *mockClient) CreateLogGroup(input *cloudwatchlogs.CreateLogGroupInput) (*cloudwatchlogs.CreateLogGroupOutput, error) {
+func (c *mockClient) CreateLogGroup(ctx context.Context, input *cloudwatchlogs.CreateLogGroupInput, opts ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.CreateLogGroupOutput, error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -56,7 +58,7 @@ func (c *mockClient) CreateLogGroup(input *cloudwatchlogs.CreateLogGroupInput) (
 	return nil, nil
 }
 
-func (c *mockClient) CreateLogStream(input *cloudwatchlogs.CreateLogStreamInput) (*cloudwatchlogs.CreateLogStreamOutput, error) {
+func (c *mockClient) CreateLogStream(ctx context.Context, input *cloudwatchlogs.CreateLogStreamInput, opts ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.CreateLogStreamOutput, error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -64,7 +66,7 @@ func (c *mockClient) CreateLogStream(input *cloudwatchlogs.CreateLogStreamInput)
 	return nil, nil
 }
 
-func (c *mockClient) PutLogEvents(putLogEvents *cloudwatchlogs.PutLogEventsInput) (*cloudwatchlogs.PutLogEventsOutput, error) {
+func (c *mockClient) PutLogEvents(ctx context.Context, putLogEvents *cloudwatchlogs.PutLogEventsInput, opts ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.PutLogEventsOutput, error) {
 	c.Lock()
 	defer c.Unlock()
 	if c.putLogEventsShouldError {
@@ -80,7 +82,7 @@ func (c *mockClient) PutLogEvents(putLogEvents *cloudwatchlogs.PutLogEventsInput
 	// sequence token and the expected one.
 	if c.expectedSequenceToken != nil {
 		if putLogEvents.SequenceToken == nil || *putLogEvents.SequenceToken != *c.expectedSequenceToken {
-			return nil, &cloudwatchlogs.InvalidSequenceTokenException{
+			return nil, &types.InvalidSequenceTokenException{
 				ExpectedSequenceToken: c.expectedSequenceToken,
 			}
 		}
@@ -95,11 +97,11 @@ func (c *mockClient) PutLogEvents(putLogEvents *cloudwatchlogs.PutLogEventsInput
 	return output, nil
 }
 
-func (c *mockClient) getLogEvents() []*cloudwatchlogs.InputLogEvent {
+func (c *mockClient) getLogEvents() []types.InputLogEvent {
 	c.RLock()
 	defer c.RUnlock()
 
-	logEvents := make([]*cloudwatchlogs.InputLogEvent, len(c.logEvents))
+	logEvents := make([]types.InputLogEvent, len(c.logEvents))
 	copy(logEvents, c.logEvents)
 
 	return logEvents
@@ -151,18 +153,18 @@ func (l *logsContainer) addLog(log exampleLog) {
 	l.logs = append(l.logs, log)
 }
 
-func (l *logsContainer) getLogEvents() ([]*cloudwatchlogs.InputLogEvent, error) {
+func (l *logsContainer) getLogEvents() ([]types.InputLogEvent, error) {
 	l.Lock()
 	defer l.Unlock()
 
-	var logEvents []*cloudwatchlogs.InputLogEvent
+	var logEvents []types.InputLogEvent
 	for _, log := range l.logs {
 		message, err := json.Marshal(log)
 		if err != nil {
 			return nil, errors.Wrap(err, "json.Marshal")
 		}
 
-		logEvents = append(logEvents, &cloudwatchlogs.InputLogEvent{
+		logEvents = append(logEvents, types.InputLogEvent{
 			Message: aws.String(string(message)),
 			// Timestamps for CloudWatch Logs should be in milliseconds since the epoch.
 			Timestamp: aws.Int64(time.Now().UTC().UnixNano() / int64(time.Millisecond)),
@@ -185,18 +187,12 @@ func helperWriteLogs(t *testing.T, writer io.Writer, logs ...interface{}) {
 }
 
 // assertEqualLogMessages asserts that the log messages are all the same, ignoring the timestamps.
-func assertEqualLogMessages(t *testing.T, expectedLogs []*cloudwatchlogs.InputLogEvent, logs []*cloudwatchlogs.InputLogEvent) {
+func assertEqualLogMessages(t *testing.T, expectedLogs []types.InputLogEvent, logs []types.InputLogEvent) {
 	if !assert.Equal(t, len(expectedLogs), len(logs), "expected to have the same number of logs") {
 		return
 	}
 
 	for index, log := range logs {
-		if log == nil {
-			t.Fatalf("found nil log at index: %d", index)
-		}
-		if expectedLogs[index] == nil {
-			t.Fatalf("found nil log in expectedLogs at index: %d", index)
-		}
 		assert.Equal(t, *expectedLogs[index].Message, *log.Message)
 	}
 }
@@ -359,7 +355,7 @@ func TestCloudWatchWriterHit10kLimit(t *testing.T) {
 	// give the queueMonitor goroutine time to start up
 	time.Sleep(time.Millisecond)
 
-	var expectedLogs []*cloudwatchlogs.InputLogEvent
+	var expectedLogs []types.InputLogEvent
 	numLogs := 10000
 	for i := 0; i < numLogs; i++ {
 		message := fmt.Sprintf("hello %d", i)
@@ -367,7 +363,7 @@ func TestCloudWatchWriterHit10kLimit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cloudWatchWriter.Write: %v", err)
 		}
-		expectedLogs = append(expectedLogs, &cloudwatchlogs.InputLogEvent{
+		expectedLogs = append(expectedLogs, types.InputLogEvent{
 			Message:   aws.String(message),
 			Timestamp: aws.Int64(time.Now().UTC().UnixNano() / int64(time.Millisecond)),
 		})
