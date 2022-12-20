@@ -9,8 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 
+	"github.com/oleiade/lane"
 	"github.com/pkg/errors"
-	"gopkg.in/oleiade/lane.v1"
 )
 
 const (
