@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 
-	"github.com/oleiade/lane"
+	"github.com/oleiade/lane/v2"
 	"github.com/pkg/errors"
 )
 
@@ -46,7 +46,7 @@ type CloudWatchWriter struct {
 	sync.RWMutex
 	client            CloudWatchLogsClient
 	batchInterval     time.Duration
-	queue             *lane.Queue
+	queue             *lane.Queue[*types.InputLogEvent]
 	err               error
 	logGroupName      *string
 	logStreamName     *string
@@ -59,7 +59,7 @@ type CloudWatchWriter struct {
 func NewWithClient(client CloudWatchLogsClient, batchInterval time.Duration, logGroupName, logStreamName string) (*CloudWatchWriter, error) {
 	writer := &CloudWatchWriter{
 		client:        client,
-		queue:         lane.NewQueue(),
+		queue:         lane.NewQueue[*types.InputLogEvent](),
 		logGroupName:  aws.String(logGroupName),
 		logStreamName: aws.String(logStreamName),
 		done:          make(chan struct{}),
@@ -165,8 +165,8 @@ func (c *CloudWatchWriter) queueMonitor() {
 			nextSendTime.Add(c.getBatchInterval())
 		}
 
-		item := c.queue.Dequeue()
-		if item == nil {
+		logEvent, _ := c.queue.Dequeue()
+		if logEvent == nil {
 			// Empty queue, means no logs to process
 			if c.isClosing() {
 				c.sendBatch(batch, 0)
@@ -179,8 +179,7 @@ func (c *CloudWatchWriter) queueMonitor() {
 			continue
 		}
 
-		logEvent, ok := item.(*types.InputLogEvent)
-		if !ok || logEvent.Message == nil {
+		if logEvent.Message == nil {
 			// This should not happen!
 			continue
 		}
