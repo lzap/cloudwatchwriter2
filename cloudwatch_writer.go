@@ -2,6 +2,8 @@ package cloudwatchwriter2
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -10,23 +12,23 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 
 	"github.com/oleiade/lane/v2"
-	"github.com/pkg/errors"
 )
 
 const (
 	// minBatchInterval is 200 ms as the maximum rate of PutLogEvents is 5
 	// requests per second.
 	minBatchInterval time.Duration = 200000000
-	// defaultBatchInterval is 5 seconds.
-	defaultBatchInterval time.Duration = 5000000000
+
 	// batchSizeLimit is 1MB in bytes, the limit imposed by AWS CloudWatch Logs
 	// on the size the batch of logs we send, see:
 	// https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
 	batchSizeLimit = 1048576
+
 	// maxNumLogEvents is the maximum number of messages that can be sent in one
 	// batch, also an AWS limitation, see:
 	// https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
 	maxNumLogEvents = 10000
+
 	// additionalBytesPerLogEvent is the number of additional bytes per log
 	// event, other than the length of the log message, see:
 	// https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
@@ -67,7 +69,7 @@ func NewWithClient(client CloudWatchLogsClient, batchInterval time.Duration, log
 
 	err := writer.SetBatchInterval(batchInterval)
 	if err != nil {
-		return nil, errors.Wrapf(err, "set batch interval: %v", batchInterval)
+		return nil, fmt.Errorf("set batch interval %v: %w", batchInterval, err)
 	}
 
 	logStream, err := writer.getOrCreateLogStream()
@@ -81,11 +83,13 @@ func NewWithClient(client CloudWatchLogsClient, batchInterval time.Duration, log
 	return writer, nil
 }
 
+var ErrBatchIntervalTooSmall = errors.New("supplied batch interval is less than the minimum")
+
 // SetBatchInterval sets the maximum time between batches of logs sent to
 // CloudWatch.
 func (c *CloudWatchWriter) SetBatchInterval(interval time.Duration) error {
 	if interval < minBatchInterval {
-		return errors.New("supplied batch interval is less than the minimum")
+		return ErrBatchIntervalTooSmall
 	}
 
 	c.setBatchInterval(interval)
@@ -270,12 +274,12 @@ func (c *CloudWatchWriter) getOrCreateLogStream() (*types.LogStream, error) {
 				LogGroupName: c.logGroupName,
 			})
 			if err != nil {
-				return nil, errors.Wrap(err, "cloudwatchlog.Client.CreateLogGroup")
+				return nil, fmt.Errorf("cloudwatchlog.Client.CreateLogGroup: %w", err)
 			}
 			return c.getOrCreateLogStream()
 		}
 
-		return nil, errors.Wrap(err, "cloudwatchlogs.Client.DescribeLogStreams")
+		return nil, fmt.Errorf("cloudwatchlogs.Client.DescribeLogStreams: %w", err)
 	}
 
 	if len(output.LogStreams) > 0 {
@@ -288,7 +292,7 @@ func (c *CloudWatchWriter) getOrCreateLogStream() (*types.LogStream, error) {
 		LogStreamName: c.logStreamName,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "cloudwatchlogs.Client.CreateLogStream")
+		return nil, fmt.Errorf("cloudwatchlogs.Client.CreateLogStream: %w", err)
 	}
 
 	// We can just return an empty log stream as the initial sequence token would be nil anyway.
