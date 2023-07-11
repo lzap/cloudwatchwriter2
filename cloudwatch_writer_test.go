@@ -524,3 +524,38 @@ func TestCloudWatchWriterReceiveInvalidSequenceTokenException(t *testing.T) {
 	}
 	assertEqualLogMessages(t, expectedLogs, client.getLogEvents())
 }
+
+func TestCloudWatchWriterSendOnClose(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		client := &mockClient{}
+		cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+		if err != nil {
+			t.Fatalf("NewWithClient: %v", err)
+		}
+
+		// give the queueMonitor goroutine time to start up
+		time.Sleep(time.Millisecond)
+
+		numLogs := 100
+		expectedLogs := make([]types.InputLogEvent, numLogs)
+		for j := 0; j < numLogs; j++ {
+			message := fmt.Sprintf("hello %d", j)
+			_, err = cloudWatchWriter.Write([]byte(message))
+			if err != nil {
+				t.Fatalf("cloudWatchWriter.Write: %v", err)
+			}
+			expectedLogs[j] = types.InputLogEvent{
+				Message:   aws.String(message),
+				Timestamp: aws.Int64(time.Now().UTC().UnixNano() / int64(time.Millisecond)),
+			}
+		}
+
+		startTime := time.Now()
+		cloudWatchWriter.Close()
+		duration := time.Since(startTime)
+		if duration >= 200*time.Millisecond {
+			t.Fatal("close sends all the messages straight away so should not have to wait for the next batch")
+		}
+		assertEqualLogMessages(t, expectedLogs, client.getLogEvents())
+	}
+}
