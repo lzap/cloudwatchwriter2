@@ -166,7 +166,7 @@ func (c *CloudWatchWriter) queueMonitor() {
 			c.sendBatch(batch, 0)
 			batch = nil
 			batchSize = 0
-			nextSendTime.Add(c.getBatchInterval())
+			nextSendTime = time.Now().Add(c.getBatchInterval())
 		}
 
 		logEvent, _ := c.queue.Dequeue()
