@@ -254,6 +254,40 @@ func TestCloudWatchWriter(t *testing.T) {
 	assertEqualLogMessages(t, expectedLogs, client.getLogEvents())
 }
 
+func TestCloudWatchWriterTime(t *testing.T) {
+	client := &mockClient{}
+
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	if err != nil {
+		t.Fatalf("NewWithClient: %v", err)
+	}
+	defer cloudWatchWriter.Close()
+
+	// give the queueMonitor goroutine time to start up
+	time.Sleep(time.Millisecond)
+
+	log1 := exampleLog{
+		Time:     "2013-05-13T19:00:02.000000000Z",
+		Message:  "Test message 1",
+		Filename: "filename",
+		Port:     666,
+	}
+	log2 := exampleLog{
+		Time:     "2013-05-13T19:00:01.000000000Z",
+		Message:  "Test message 2",
+		Filename: "filename",
+		Port:     666,
+	}
+
+	helperWriteLogs(t, cloudWatchWriter, log1, log2)
+	if err = client.waitForLogs(2, 201*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+
+	result := client.getLogEvents()
+	assert.True(t, *result[0].Timestamp <= *result[1].Timestamp)
+}
+
 func TestCloudWatchWriterBatchInterval(t *testing.T) {
 	client := &mockClient{}
 

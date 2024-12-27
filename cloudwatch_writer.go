@@ -142,8 +142,6 @@ func (c *CloudWatchWriter) getNextSequenceToken() *string {
 func (c *CloudWatchWriter) Write(log []byte) (int, error) {
 	event := &types.InputLogEvent{
 		Message: aws.String(string(log)),
-		// Timestamp has to be in milliseconds since the epoch
-		Timestamp: aws.Int64(time.Now().UTC().UnixNano() / int64(time.Millisecond)),
 	}
 	c.queue.Enqueue(event)
 
@@ -187,6 +185,10 @@ func (c *CloudWatchWriter) queueMonitor() {
 			// This should not happen!
 			continue
 		}
+
+		// Make sure the time is monotonic - the input time is ignored.
+		// AWS expects the timestamp to be in milliseconds since the epoch.
+		logEvent.Timestamp = aws.Int64(time.Now().UTC().UnixMilli())
 
 		messageSize := len(*logEvent.Message) + additionalBytesPerLogEvent
 		// Send the batch before adding the next message, if the message would
