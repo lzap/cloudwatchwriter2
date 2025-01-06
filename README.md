@@ -2,8 +2,6 @@
 
 A robust Zerolog or slog writer for AWS CloudWatch using Go SDK v2. It can be used for writing logs from any kind of logging library as it implements `io.Writer` interface. Each call of the `Write` method contain a byte slice payload with valid JSON, longer payloads must be sent in a single call.
 
-In 2025, I have decided to rewrite the whole queueing functionality as it turned out the original code had some issues with performance. The maximum bandwidth was 1000 messages per second.
-
 This library assumes that you have IAM credentials to allow you to talk to AWS CloudWatch Logs.
 The specific permissions that are required are:
 - CreateLogGroup,
@@ -41,7 +39,7 @@ slog.Info("this is a message)
 
 ## Usage with Zerolog
 
-See [the example](example/example.go).
+See [the example](internal/example/example.go).
 
 Make sure to close the writer to flush the queue, you can `defer` the `Close()` call in main.
 The `Close()` function blocks until all the logs have been processed.
@@ -82,3 +80,5 @@ MIT
 ## Acknowledgements
 
 The original library was written by mac07 (https://github.com/mec07/cloudwatchwriter), I upgraded it to SDK v2. The work is based on logrus implementation (https://github.com/kdar/logrus-cloudwatchlogs) and a gist (https://gist.github.com/asdine/f821abe6189a04250ae61b77a3048bd9). Thanks all!
+
+In 2025, I have decided to rewrite the whole queueing functionality as it turned out the original code had some issues with performance. The maximum bandwidth was 1000 events per second. I cleaned up the code, added statistics, simplified and updated dependencies. Finally, added some information on how to use the library with `log/slog`.
