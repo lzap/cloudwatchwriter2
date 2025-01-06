@@ -6,6 +6,7 @@ toolchain go1.23.4
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.32.7
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.48
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.45.1
 	github.com/stretchr/testify v1.10.0
 )
