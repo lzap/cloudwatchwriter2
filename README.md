@@ -1,6 +1,6 @@
 # cloudwatchwriter2 aka slog-cloudwatch
 
-A robust Zerolog or slog writer for AWS CloudWatch using Go SDK v2. It can be used for writing logs from any kind of logging library as it implements `io.Writer` interface. Each call of the `Write` method contain a byte slice payload with valid JSON, longer payloads must be sent in a single call.
+A robust log/slog handler or zerolog writer for AWS CloudWatch using Go SDK v2. It can be used for writing logs from any kind of logging library as it implements `io.Writer` interface. Each call of the `Write` method contain a byte slice payload with valid JSON, longer payloads must not be written in more than 1 block/call.
 
 This library assumes that you have IAM credentials to allow you to talk to AWS CloudWatch Logs.
 The specific permissions that are required are:
