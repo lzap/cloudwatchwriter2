@@ -225,7 +225,7 @@ func (c *CloudWatchWriter) sendBatch(batch []types.InputLogEvent, retryNum int) 
 		SequenceToken: c.getNextSequenceToken(),
 	}
 
-	output, err := c.client.PutLogEvents(context.TODO(), input)
+	output, err := c.client.PutLogEvents(context.Background(), input)
 	if err != nil {
 		if invalidSequenceTokenErr, ok := err.(*types.InvalidSequenceTokenException); ok {
 			c.setNextSequenceToken(invalidSequenceTokenErr.ExpectedSequenceToken)
@@ -265,14 +265,14 @@ func (c *CloudWatchWriter) setClosing() {
 // it, if the log stream doesn't exist, then we create it.
 func (c *CloudWatchWriter) getOrCreateLogStream() (*types.LogStream, error) {
 	// Get the log streams that match our log group name and log stream
-	output, err := c.client.DescribeLogStreams(context.TODO(), &cloudwatchlogs.DescribeLogStreamsInput{
+	output, err := c.client.DescribeLogStreams(context.Background(), &cloudwatchlogs.DescribeLogStreamsInput{
 		LogGroupName:        c.logGroupName,
 		LogStreamNamePrefix: c.logStreamName,
 	})
 	if err != nil || output == nil {
 		// i.e. the log group does not exist
 		if _, ok := err.(*types.ResourceNotFoundException); !ok {
-			_, err = c.client.CreateLogGroup(context.TODO(), &cloudwatchlogs.CreateLogGroupInput{
+			_, err = c.client.CreateLogGroup(context.Background(), &cloudwatchlogs.CreateLogGroupInput{
 				LogGroupName: c.logGroupName,
 			})
 			if err != nil {
@@ -289,7 +289,7 @@ func (c *CloudWatchWriter) getOrCreateLogStream() (*types.LogStream, error) {
 	}
 
 	// No matching log stream, so we need to create it
-	_, err = c.client.CreateLogStream(context.TODO(), &cloudwatchlogs.CreateLogStreamInput{
+	_, err = c.client.CreateLogStream(context.Background(), &cloudwatchlogs.CreateLogStreamInput{
 		LogGroupName:  c.logGroupName,
 		LogStreamName: c.logStreamName,
 	})
