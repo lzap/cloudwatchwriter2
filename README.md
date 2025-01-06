@@ -1,8 +1,8 @@
-# cloudwatchwriter2
+# cloudwatchwriter2 aka slog-cloudwatch
 
-A robust Zerolog writer for AWS CloudWatch using Go SDK v2.
+A robust Zerolog or slog writer for AWS CloudWatch using Go SDK v2. It can be used for writing logs from any kind of logging library as it implements `io.Writer` interface. Each call of the `Write` method contain a byte slice payload with valid JSON, longer payloads must be sent in a single call.
 
-## Usage
+In 2025, I have decided to rewrite the whole queueing functionality as it turned out the original code had some issues with performance. The maximum bandwidth was 1000 messages per second.
 
 This library assumes that you have IAM credentials to allow you to talk to AWS CloudWatch Logs.
 The specific permissions that are required are:
@@ -16,12 +16,37 @@ There are two exceptions to that:
 - if the log group already exists, then you don't need permission to CreateLogGroup;
 - if the log stream already exists, then you don't need permission to CreateLogStream.
 
+## Usage with log/slog
+
+Use the high-performance built-in JSON handler from Go library to directly write data.
+
+```
+aws_region := os.Getenv("AWS_REGION")
+aws_key := os.Getenv("AWS_KEY")
+aws_secret := os.Getenv("AWS_SECRET")
+aws_session := os.Getenv("AWS_SESSION")
+
+options := cloudwatchlogs.Options{
+    Region:      aws_region,
+    Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(aws_key, aws_secret, aws_session)),
+}
+client := cloudwatchlogs.New(options)
+
+w, err := cww.NewWithClient(client, 500*time.Millisecond, logGroupName, logStreamName)
+h := slog.NewJSONHandler(w, &slog.HandlerOptions{AddSource: true})
+slog.SetDefault(slog.New(h))
+
+slog.Info("this is a message)
+```
+
+## Usage with Zerolog
+
 See [the example](example/example.go).
 
 Make sure to close the writer to flush the queue, you can `defer` the `Close()` call in main.
 The `Close()` function blocks until all the logs have been processed.
 
-The library was tested with 1.18 as it uses the new `go.work` feature for the example, but it whould work with any Go version supported by Zerolog and AWS SDK v2.
+The library was tested with 1.18 as it uses the new `go.work` feature for the example, but it would work with any Go version supported by Zerolog and AWS SDK v2.
 
 ### Write to CloudWatch and the console
 

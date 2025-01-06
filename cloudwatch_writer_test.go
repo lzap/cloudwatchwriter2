@@ -3,6 +3,7 @@ package cloudwatchwriter2_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -13,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	cloudwatchwriter "github.com/lzap/cloudwatchwriter2"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -161,7 +161,7 @@ func (l *logsContainer) getLogEvents() ([]types.InputLogEvent, error) {
 	for _, log := range l.logs {
 		message, err := json.Marshal(log)
 		if err != nil {
-			return nil, errors.Wrap(err, "json.Marshal")
+			return nil, fmt.Errorf("json.Marshal: %w", err)
 		}
 
 		logEvents = append(logEvents, types.InputLogEvent{
@@ -291,26 +291,15 @@ func TestCloudWatchWriterTime(t *testing.T) {
 func TestCloudWatchWriterBatchInterval(t *testing.T) {
 	client := &mockClient{}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 5*time.Second, "logGroup", "logStream")
-	if err != nil {
-		t.Fatalf("NewWithClient: %v", err)
-	}
-	defer cloudWatchWriter.Close()
-
-	// can't set anything below 200 milliseconds
-	err = cloudWatchWriter.SetBatchInterval(199 * time.Millisecond)
+	_, err := cloudwatchwriter.NewWithClient(client, 199*time.Millisecond, "logGroup", "logStream")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
 
-	// setting it to a value greater than or equal to 200 is OK
-	err = cloudWatchWriter.SetBatchInterval(200 * time.Millisecond)
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
 	if err != nil {
-		t.Fatalf("CloudWatchWriter.SetBatchInterval: %v", err)
+		t.Fatalf("NewWithClient: %v", err)
 	}
-
-	// give the queueMonitor goroutine time to start up
-	time.Sleep(time.Millisecond)
 
 	aLog := exampleLog{
 		Time:     "2009-11-10T23:00:02.043123061Z",
@@ -319,18 +308,12 @@ func TestCloudWatchWriterBatchInterval(t *testing.T) {
 		Port:     666,
 	}
 
-	helperWriteLogs(t, cloudWatchWriter, aLog)
-
 	// The client shouldn't have received any logs at this time
 	assert.Equal(t, 0, client.numLogs())
 
-	// Still no logs after 100 milliseconds
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, 0, client.numLogs())
+	helperWriteLogs(t, cloudWatchWriter, aLog)
+	cloudWatchWriter.Close()
 
-	// The client should have received the log after another 101 milliseconds
-	// (as that is a total sleep time of 201 milliseconds)
-	time.Sleep(101 * time.Millisecond)
 	assert.Equal(t, 1, client.numLogs())
 }
 
@@ -464,6 +447,9 @@ func TestCloudWatchWriterClose(t *testing.T) {
 	}
 	defer cloudWatchWriter.Close()
 
+	// The logs shouldn't have come through yet
+	assert.Equal(t, 0, client.numLogs())
+
 	numLogs := 99
 	for i := 0; i < numLogs; i++ {
 		aLog := exampleLog{
@@ -474,9 +460,6 @@ func TestCloudWatchWriterClose(t *testing.T) {
 		}
 		helperWriteLogs(t, cloudWatchWriter, aLog)
 	}
-
-	// The logs shouldn't have come through yet
-	assert.Equal(t, 0, client.numLogs())
 
 	// Close should block until the queue is empty
 	cloudWatchWriter.Close()
