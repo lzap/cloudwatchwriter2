@@ -81,5 +81,9 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 
 // Flush flushes all pending payloads to the CloudWatch client. See CloudWatchWriter.Close for more information.
 func (h *Handler) Close() {
+	if h.client == nil {
+		return
+	}
+
 	h.client.Close()
 }
