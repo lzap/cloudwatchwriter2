@@ -79,7 +79,11 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 	return a
 }
 
-// Close flushes all pending payloads to the CloudWatch client and closes it. See CloudWatchWriter.Close for more information.
+// Close will flush the buffer, close the channel and wait until all payloads
+// are sent, not longer than 2 seconds. It is safe to call close multiple times.
+// After close is called the client will not accept any new events, all attemtps
+// to send new events will return ErrFullOrClosed. Use CloseWithTimeout to
+// specify a custom timeout.
 func (h *Handler) Close() {
 	if h.client == nil {
 		return
@@ -88,7 +92,24 @@ func (h *Handler) Close() {
 	h.client.Close()
 }
 
-// Flush flushes all pending payloads to the CloudWatch client. See CloudWatchWriter.Flush for more information.
+// Close will flush the buffer, close the channel and wait until all payloads
+// are sent, not longer than specified amount of time. It is safe to call close
+// multiple times. After close is called the client will not accept any new
+// events, all attemtps to send new events will return ErrFullOrClosed.
+//
+// Returns true if the close was successful, false if the timeout was reached
+// before the close could be completed or if the client was already closed.
+func (h *Handler) CloseWithTimeout(timeout time.Duration) bool {
+	if h.client == nil {
+		return false
+	}
+
+	return h.client.CloseWithTimeout(timeout)
+}
+
+// Flush will cause the logger to flush the current buffer. It does not block, there is no
+// guarantee that the buffer will be flushed immediately. Use Close in order to properly
+// close during application termination.
 func (h *Handler) Flush() {
 	if h.client == nil {
 		return

@@ -265,6 +265,9 @@ func (c *CloudWatchWriter) Close() {
 // are sent, not longer than specified amount of time. It is safe to call close
 // multiple times. After close is called the client will not accept any new
 // events, all attemtps to send new events will return ErrFullOrClosed.
+// 
+// Returns true if the close was successful, false if the timeout was reached
+// before the close could be completed or if the client was already closed.
 func (c *CloudWatchWriter) CloseWithTimeout(timeout time.Duration) bool {
 	var result bool
 
