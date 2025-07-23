@@ -79,11 +79,20 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 	return a
 }
 
-// Flush flushes all pending payloads to the CloudWatch client. See CloudWatchWriter.Close for more information.
+// Close flushes all pending payloads to the CloudWatch client and closes it. See CloudWatchWriter.Close for more information.
 func (h *Handler) Close() {
 	if h.client == nil {
 		return
 	}
 
 	h.client.Close()
+}
+
+// Flush flushes all pending payloads to the CloudWatch client. See CloudWatchWriter.Flush for more information.
+func (h *Handler) Flush() {
+	if h.client == nil {
+		return
+	}
+
+	h.client.Flush()
 }
