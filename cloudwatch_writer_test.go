@@ -204,7 +204,7 @@ func TestCloudWatchWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.Close()
+	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
 
 	// give the queueMonitor goroutine time to start up
 	time.Sleep(time.Millisecond)
@@ -261,7 +261,7 @@ func TestCloudWatchWriterTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.Close()
+	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
 
 	// give the queueMonitor goroutine time to start up
 	time.Sleep(time.Millisecond)
@@ -312,7 +312,7 @@ func TestCloudWatchWriterBatchInterval(t *testing.T) {
 	assert.Equal(t, 0, client.numLogs())
 
 	helperWriteLogs(t, cloudWatchWriter, aLog)
-	cloudWatchWriter.Close()
+	cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
 
 	assert.Equal(t, 1, client.numLogs())
 }
@@ -325,7 +325,7 @@ func TestCloudWatchWriterHit1MBLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.Close()
+	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
 
 	// give the queueMonitor goroutine time to start up
 	time.Sleep(time.Millisecond)
@@ -367,7 +367,7 @@ func TestCloudWatchWriterHit10kLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.Close()
+	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
 
 	// give the queueMonitor goroutine time to start up
 	time.Sleep(time.Millisecond)
@@ -408,7 +408,7 @@ func TestCloudWatchWriterParallel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.Close()
+	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
 
 	logs := logsContainer{}
 	numLogs := 8000
@@ -445,7 +445,7 @@ func TestCloudWatchWriterClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.Close()
+	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
 
 	// The logs shouldn't have come through yet
 	assert.Equal(t, 0, client.numLogs())
@@ -477,7 +477,7 @@ func TestCloudWatchWriterReportError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.Close()
+	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
 
 	// give the queueMonitor goroutine time to start up
 	time.Sleep(time.Millisecond)
@@ -508,7 +508,7 @@ func TestCloudWatchWriterReceiveInvalidSequenceTokenException(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.Close()
+	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
 
 	// give the queueMonitor goroutine time to start up
 	time.Sleep(time.Millisecond)

@@ -55,8 +55,9 @@ var ErrBatchIntervalTooSmall = errors.New("batch interval is too small")
 type CloudWatchWriter struct {
 	client CloudWatchLogsClient
 
-	payloads chan types.InputLogEvent
-	active   atomic.Bool
+	payloads  chan types.InputLogEvent
+	active    atomic.Bool
+	closeOnce sync.Once
 
 	batchInterval     time.Duration
 	lastErr           *LastErr
@@ -251,24 +252,40 @@ func (c *CloudWatchWriter) Flush() {
 	c.payloads <- flushEvent
 }
 
-// Close will flush the buffer, close the channel and wait until all payloads are sent,
-// not longer than 2 seconds. It is safe to call close multiple times. After close is called
-// the client will not accept any new events, all attemtps to send new events will return
-// ErrFullOrClosed.
+// Close will flush the buffer, close the channel and wait until all payloads
+// are sent, not longer than 2 seconds. It is safe to call close multiple times.
+// After close is called the client will not accept any new events, all attemtps
+// to send new events will return ErrFullOrClosed. Use CloseWithTimeout to
+// specify a custom timeout.
 func (c *CloudWatchWriter) Close() {
-	if !c.active.Load() {
-		return
-	}
-	close(c.payloads)
+	c.CloseWithTimeout(2 * time.Second)
+}
 
-	timeout := time.Now().Add(2 * time.Second)
-	for c.active.Load() {
-		time.Sleep(10 * time.Millisecond)
+// Close will flush the buffer, close the channel and wait until all payloads
+// are sent, not longer than specified amount of time. It is safe to call close
+// multiple times. After close is called the client will not accept any new
+// events, all attemtps to send new events will return ErrFullOrClosed.
+func (c *CloudWatchWriter) CloseWithTimeout(timeout time.Duration) bool {
+	var result bool
 
-		if time.Now().After(timeout) {
-			break
+	c.closeOnce.Do(func() {
+		if !c.active.Load() {
+			return
 		}
-	}
+		close(c.payloads)
+
+		timeout := time.Now().Add(timeout)
+		for c.active.Load() {
+			time.Sleep(10 * time.Millisecond)
+
+			if time.Now().After(timeout) {
+				break
+			}
+		}
+		result = true
+	})
+
+	return result
 }
 
 // getOrCreateLogStream gets info on the log stream for the log group and log
