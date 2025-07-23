@@ -562,12 +562,6 @@ func TestCloudWatchWriterSendOnClose(t *testing.T) {
 				t.Fatalf("cloudWatchWriter.Write: %v", err)
 			}
 
-			if i%10 == 0 {
-				// race condition test
-				cloudWatchWriter.Flush()
-				cloudWatchWriter.Flush()
-			}
-
 			expectedLogs[j] = types.InputLogEvent{
 				Message:   aws.String(message),
 				Timestamp: aws.Int64(time.Now().UTC().UnixNano() / int64(time.Millisecond)),
@@ -581,9 +575,24 @@ func TestCloudWatchWriterSendOnClose(t *testing.T) {
 			t.Fatal("close sends all the messages straight away so should not have to wait for the next batch")
 		}
 		assertEqualLogMessages(t, expectedLogs, client.getLogEvents())
-
-		// race condition test
-		cloudWatchWriter.Close()
-		cloudWatchWriter.Close()
 	}
+}
+
+func TestCloudWatchWriterFlushClose(t *testing.T) {
+	client := &mockClient{}
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	if err != nil {
+		t.Fatalf("NewWithClient: %v", err)
+	}
+
+	// give the queueMonitor goroutine time to start up
+	time.Sleep(time.Millisecond)
+
+	go cloudWatchWriter.Flush()
+	go cloudWatchWriter.Flush()
+
+	// let the flush complete
+	time.Sleep(10 * time.Millisecond)
+	go cloudWatchWriter.Close()
+	go cloudWatchWriter.Close()
 }
