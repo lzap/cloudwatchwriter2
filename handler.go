@@ -1,6 +1,7 @@
 package cloudwatchwriter2
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -92,6 +93,8 @@ func (h *Handler) Close() {
 	h.client.Close()
 }
 
+var ErrNotInitialized = errors.New("handler is not initialized")
+
 // Close will flush the buffer, close the channel and wait until all payloads
 // are sent, not longer than specified amount of time. It is safe to call close
 // multiple times. After close is called the client will not accept any new
@@ -99,9 +102,9 @@ func (h *Handler) Close() {
 //
 // Returns true if the close was successful, false if the timeout was reached
 // before the close could be completed or if the client was already closed.
-func (h *Handler) CloseWithTimeout(timeout time.Duration) bool {
+func (h *Handler) CloseWithTimeout(timeout time.Duration) error {
 	if h.client == nil {
-		return false
+		return ErrNotInitialized
 	}
 
 	return h.client.CloseWithTimeout(timeout)

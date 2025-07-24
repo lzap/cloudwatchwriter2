@@ -265,18 +265,20 @@ func (c *CloudWatchWriter) Close() {
 	c.CloseWithTimeout(2 * time.Second)
 }
 
+var ErrCloseTimeout = errors.New("close timeout reached")
+
 // Close will flush the buffer, close the channel and wait until all payloads
 // are sent, not longer than specified amount of time. It is safe to call close
 // multiple times. After close is called the client will not accept any new
 // events, all attemtps to send new events will return ErrFullOrClosed.
 //
-// Returns true if the close was successful, false if the timeout was reached
-// before the close could be completed or if the client was already closed.
-func (c *CloudWatchWriter) CloseWithTimeout(timeout time.Duration) bool {
+// Returns ErrCloseTimeout if the timeout was reached before the close could be
+// completed.
+func (c *CloudWatchWriter) CloseWithTimeout(timeout time.Duration) error {
 	c.flushMu.Lock()
 	defer c.flushMu.Unlock()
 
-	var result bool
+	var result error
 	c.closeOnce.Do(func() {
 		if !c.active.Load() {
 			return
@@ -288,10 +290,10 @@ func (c *CloudWatchWriter) CloseWithTimeout(timeout time.Duration) bool {
 			time.Sleep(10 * time.Millisecond)
 
 			if time.Now().After(timeout) {
+				result = ErrCloseTimeout
 				break
 			}
 		}
-		result = true
 	})
 
 	return result
