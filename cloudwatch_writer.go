@@ -205,7 +205,7 @@ func (c *CloudWatchWriter) queueMonitor(ctx context.Context, ticker <-chan time.
 			batchSize += messageSize
 			c.Stats.QueuedEventCount.Add(1)
 
-			if batchSize+messageSize > BatchSizeLimit {
+			if batchSize > BatchSizeLimit {
 				sendPayloads()
 			}
 
