@@ -35,7 +35,12 @@ func main() {
 		fmt.Printf("Total logs sent: %d\n", cloudWatchWriter.Stats.SentEventCount.Load())
 		fmt.Printf("Total batches: %d\n", cloudWatchWriter.Stats.BatchCount.Load())
 	}()
-	defer cloudWatchWriter.Close() // this is important to flush the remaining batch
+	defer func() {
+		err := cloudWatchWriter.Close()
+		if err != nil {
+			fmt.Printf("Close: %v\n", err)
+		}
+	}()
 
 	// log/slog
 	h := slog.NewJSONHandler(cloudWatchWriter, &slog.HandlerOptions{})
