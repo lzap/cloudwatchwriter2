@@ -21,9 +21,10 @@ import (
 const (
 	sequenceToken = "next-sequence-token"
 
-	testBatchInterval     = 20 * time.Millisecond
-	testBatchIntervalHalf = testBatchInterval / 2
-	testWaitInterval      = 2 * time.Millisecond
+	testBatchInterval       = 20 * time.Millisecond
+	testBatchIntervalHalf   = testBatchInterval / 2
+	testBatchIntervalDouble = testBatchInterval * 2
+	testWaitInterval        = 0 * time.Millisecond
 )
 
 func init() {
@@ -359,7 +360,7 @@ func TestCloudWatchWriterHit1MBLimit(t *testing.T) {
 	// so much data
 	assert.True(t, client.numLogs() > 0)
 
-	if err = client.waitForLogs(numLogs, 400*time.Millisecond); err != nil {
+	if err = client.waitForLogs(numLogs, testBatchIntervalDouble); err != nil {
 		t.Fatal(err)
 	}
 
@@ -609,6 +610,35 @@ func TestCloudWatchWriterFlushClose(t *testing.T) {
 	go cloudWatchWriter.Close()
 }
 
+func TestCloudWatchWriterEventQueueBlocking(t *testing.T) {
+	client := &mockClient{}
+
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
+	if err != nil {
+		t.Fatalf("NewWithClient: %v", err)
+	}
+	defer func() {
+		cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	}()
+
+	// one more message and the queue is full and error can be returned (depending on timing)
+	testStr := "fill the queue"
+	for range cloudwatchwriter.PayloadsChannelSize {
+		_, err := cloudWatchWriter.Write([]byte(testStr))
+		if err != nil {
+			t.Fatalf("cloudWatchWriter.Write: %v", err)
+		}
+	}
+
+	if err = client.waitForLogs(1, testBatchIntervalDouble); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, log := range client.getLogEvents() {
+		assert.Equal(t, testStr, *log.Message)
+	}
+}
+
 func TestCloudWatchWriterBatchSizeReset(t *testing.T) {
 	client := &mockClient{}
 
@@ -636,7 +666,7 @@ func TestCloudWatchWriterBatchSizeReset(t *testing.T) {
 		})
 	}
 
-	if err = client.waitForLogs(numLogs, 400*time.Millisecond); err != nil {
+	if err = client.waitForLogs(numLogs, testBatchIntervalDouble); err != nil {
 		t.Fatal(err)
 	}
 
