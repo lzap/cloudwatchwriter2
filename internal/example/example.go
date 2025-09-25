@@ -10,8 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	cww "github.com/lzap/cloudwatchwriter2"
-
-	"github.com/rs/zerolog"
 )
 
 func main() {
@@ -39,16 +37,11 @@ func main() {
 	}()
 	defer cloudWatchWriter.Close() // this is important to flush the remaining batch
 
-	// zerolog
-	consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout}
-	logger := zerolog.New(zerolog.MultiLevelWriter(consoleWriter, cloudWatchWriter)).With().Timestamp().Logger()
-
 	// log/slog
 	h := slog.NewJSONHandler(cloudWatchWriter, &slog.HandlerOptions{})
 	slog.SetDefault(slog.New(h))
 
-	for i := 1; i <= 5; i++ {
-		slog.Info("log", "from", "slog", "i", i)
-		logger.Info().Str("from", "zerolog").Msgf("Log %d", i)
+	for i := 1; i <= 10000; i++ {
+		slog.Info("this is a test log message", "from", "slog", "i", i)
 	}
 }
