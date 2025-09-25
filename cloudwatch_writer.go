@@ -232,9 +232,6 @@ func (c *CloudWatchWriter) sendBatch(batch []types.InputLogEvent, retryNum int) 
 			c.Stats.RetryCount.Add(1)
 			c.nextSequenceToken = invalidSequenceTokenErr.ExpectedSequenceToken
 			c.sendBatch(batch, retryNum+1)
-
-			c.Stats.BatchCount.Add(1)
-			c.Stats.SentEventCount.Add(uint64(len(batch)))
 			return
 		}
 		c.lastErr.set(err)
