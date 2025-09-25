@@ -265,8 +265,8 @@ func (c *CloudWatchWriter) Flush() {
 // After close is called the client will not accept any new events, all attemtps
 // to send new events will return ErrFullOrClosed. Use CloseWithTimeout to
 // specify a custom timeout.
-func (c *CloudWatchWriter) Close() {
-	c.CloseWithTimeout(2 * time.Second)
+func (c *CloudWatchWriter) Close() error {
+	return c.CloseWithTimeout(2 * time.Second)
 }
 
 var ErrCloseTimeout = errors.New("close timeout reached")

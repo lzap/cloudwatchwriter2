@@ -217,7 +217,12 @@ func TestCloudWatchWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	defer func() {
+		err := cloudWatchWriter.CloseWithTimeout(testBatchInterval)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
+	}()
 
 	// Prevent queue from getting full
 	time.Sleep(testWaitInterval)
@@ -274,7 +279,12 @@ func TestCloudWatchWriterTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	defer func() {
+		err := cloudWatchWriter.CloseWithTimeout(testBatchInterval)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
+	}()
 
 	// Prevent queue from getting full
 	time.Sleep(testWaitInterval)
@@ -325,7 +335,10 @@ func TestCloudWatchWriterBatchInterval(t *testing.T) {
 	assert.Equal(t, 0, client.numLogs())
 
 	helperWriteLogs(t, cloudWatchWriter, aLog)
-	cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	err = cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	if err != nil {
+		t.Fatalf("CloseWithTimeout: %v", err)
+	}
 
 	assert.Equal(t, 1, client.numLogs())
 }
@@ -338,7 +351,12 @@ func TestCloudWatchWriterHit1MBLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	defer func() {
+		err := cloudWatchWriter.CloseWithTimeout(testBatchInterval)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
+	}()
 
 	// Prevent queue from getting full
 	time.Sleep(testWaitInterval)
@@ -380,7 +398,12 @@ func TestCloudWatchWriterHit10kLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	defer func() {
+		err := cloudWatchWriter.CloseWithTimeout(testBatchInterval)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
+	}()
 
 	// Prevent queue from getting full
 	time.Sleep(testWaitInterval)
@@ -421,7 +444,12 @@ func TestCloudWatchWriterParallel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	defer func() {
+		err := cloudWatchWriter.CloseWithTimeout(testBatchInterval)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
+	}()
 
 	logs := logsContainer{}
 	numLogs := 8000
@@ -458,7 +486,12 @@ func TestCloudWatchWriterClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	defer func() {
+		err := cloudWatchWriter.CloseWithTimeout(testBatchInterval)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
+	}()
 
 	// The logs shouldn't have come through yet
 	assert.Equal(t, 0, client.numLogs())
@@ -475,7 +508,10 @@ func TestCloudWatchWriterClose(t *testing.T) {
 	}
 
 	// Close should block until the queue is empty
-	cloudWatchWriter.Close()
+	err = cloudWatchWriter.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
 
 	// The logs should have all come through now
 	assert.Equal(t, numLogs, client.numLogs())
@@ -490,7 +526,12 @@ func TestCloudWatchWriterReportError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	defer func() {
+		err := cloudWatchWriter.CloseWithTimeout(testBatchInterval)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
+	}()
 
 	// Prevent queue from getting full
 	time.Sleep(testWaitInterval)
@@ -521,7 +562,12 @@ func TestCloudWatchWriterReceiveInvalidSequenceTokenException(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	defer func() {
+		err := cloudWatchWriter.CloseWithTimeout(testBatchInterval)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
+	}()
 
 	// Prevent queue from getting full
 	time.Sleep(testWaitInterval)
@@ -582,7 +628,10 @@ func TestCloudWatchWriterSendOnClose(t *testing.T) {
 		}
 
 		startTime := time.Now()
-		cloudWatchWriter.Close()
+		err = cloudWatchWriter.Close()
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
 		duration := time.Since(startTime)
 		if duration >= testBatchInterval {
 			t.Fatal("close sends all the messages straight away so should not have to wait for the next batch")
@@ -606,8 +655,18 @@ func TestCloudWatchWriterFlushClose(t *testing.T) {
 
 	// let the flush complete
 	time.Sleep(10 * time.Millisecond)
-	go cloudWatchWriter.Close()
-	go cloudWatchWriter.Close()
+	go func() {
+		err := cloudWatchWriter.Close()
+		if err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	}()
+	go func() {
+		err := cloudWatchWriter.Close()
+		if err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	}()
 }
 
 func TestCloudWatchWriterEventQueueBlocking(t *testing.T) {
@@ -618,7 +677,10 @@ func TestCloudWatchWriterEventQueueBlocking(t *testing.T) {
 		t.Fatalf("NewWithClient: %v", err)
 	}
 	defer func() {
-		cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+		err := cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
 	}()
 
 	// one more message and the queue is full and error can be returned (depending on timing)
@@ -646,7 +708,12 @@ func TestCloudWatchWriterBatchSizeReset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+	defer func() {
+		err := cloudWatchWriter.CloseWithTimeout(testBatchInterval)
+		if err != nil {
+			t.Fatalf("CloseWithTimeout: %v", err)
+		}
+	}()
 
 	// Prevent queue from getting full
 	time.Sleep(testWaitInterval)
