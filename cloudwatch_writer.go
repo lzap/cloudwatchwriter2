@@ -147,6 +147,9 @@ func (c *CloudWatchWriter) Write(log []byte) (int, error) {
 		Message: aws.String(string(log)),
 	}
 
+	// Non-blocking write, return error if the channel is full or closed.
+	// This is important as we do not want to block the application if CloudWatch
+	// is slow or unavailable.
 	select {
 	case c.payloads <- event:
 	default:
