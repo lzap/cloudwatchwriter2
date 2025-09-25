@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,7 +18,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const sequenceToken = "next-sequence-token"
+const (
+	sequenceToken = "next-sequence-token"
+
+	testBatchInterval     = 20 * time.Millisecond
+	testBatchIntervalHalf = testBatchInterval / 2
+	testWaitInterval      = 2 * time.Millisecond
+)
+
+func init() {
+	// Override the MinBatchInterval for testing purposes only.
+	cloudwatchwriter.MinBatchInterval = testBatchInterval
+}
 
 type mockClient struct {
 	sync.RWMutex
@@ -125,7 +137,7 @@ func (c *mockClient) waitForLogs(numberOfLogs int, timeout time.Duration) error 
 			return errors.New("ran out of time waiting for logs")
 		}
 
-		time.Sleep(time.Millisecond)
+		time.Sleep(testWaitInterval)
 	}
 }
 
@@ -200,14 +212,14 @@ func assertEqualLogMessages(t *testing.T, expectedLogs []types.InputLogEvent, lo
 func TestCloudWatchWriter(t *testing.T) {
 	client := &mockClient{}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
+	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
 
-	// give the queueMonitor goroutine time to start up
-	time.Sleep(time.Millisecond)
+	// Prevent queue from getting full
+	time.Sleep(testWaitInterval)
 
 	log1 := exampleLog{
 		Time:     "2009-11-10T23:00:02.043123061Z",
@@ -257,14 +269,14 @@ func TestCloudWatchWriter(t *testing.T) {
 func TestCloudWatchWriterTime(t *testing.T) {
 	client := &mockClient{}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
+	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
 
-	// give the queueMonitor goroutine time to start up
-	time.Sleep(time.Millisecond)
+	// Prevent queue from getting full
+	time.Sleep(testWaitInterval)
 
 	log1 := exampleLog{
 		Time:     "2013-05-13T19:00:02.000000000Z",
@@ -291,12 +303,12 @@ func TestCloudWatchWriterTime(t *testing.T) {
 func TestCloudWatchWriterBatchInterval(t *testing.T) {
 	client := &mockClient{}
 
-	_, err := cloudwatchwriter.NewWithClient(client, 199*time.Millisecond, "logGroup", "logStream")
+	_, err := cloudwatchwriter.NewWithClient(client, testBatchIntervalHalf, "logGroup", "logStream")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
@@ -312,7 +324,7 @@ func TestCloudWatchWriterBatchInterval(t *testing.T) {
 	assert.Equal(t, 0, client.numLogs())
 
 	helperWriteLogs(t, cloudWatchWriter, aLog)
-	cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
+	cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
 
 	assert.Equal(t, 1, client.numLogs())
 }
@@ -321,14 +333,14 @@ func TestCloudWatchWriterBatchInterval(t *testing.T) {
 func TestCloudWatchWriterHit1MBLimit(t *testing.T) {
 	client := &mockClient{}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
+	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
 
-	// give the queueMonitor goroutine time to start up
-	time.Sleep(time.Millisecond)
+	// Prevent queue from getting full
+	time.Sleep(testWaitInterval)
 
 	logs := logsContainer{}
 	numLogs := 9999
@@ -363,14 +375,14 @@ func TestCloudWatchWriterHit1MBLimit(t *testing.T) {
 func TestCloudWatchWriterHit10kLimit(t *testing.T) {
 	client := &mockClient{}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
+	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
 
-	// give the queueMonitor goroutine time to start up
-	time.Sleep(time.Millisecond)
+	// Prevent queue from getting full
+	time.Sleep(testWaitInterval)
 
 	var expectedLogs []types.InputLogEvent
 	numLogs := 10000
@@ -394,7 +406,7 @@ func TestCloudWatchWriterHit10kLimit(t *testing.T) {
 	// so many logs
 	assert.True(t, client.numLogs() > 0)
 
-	if err = client.waitForLogs(numLogs, 200*time.Millisecond); err != nil {
+	if err = client.waitForLogs(numLogs, testBatchInterval); err != nil {
 		t.Fatal(err)
 	}
 
@@ -404,11 +416,11 @@ func TestCloudWatchWriterHit10kLimit(t *testing.T) {
 func TestCloudWatchWriterParallel(t *testing.T) {
 	client := &mockClient{}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
+	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
 
 	logs := logsContainer{}
 	numLogs := 8000
@@ -441,11 +453,11 @@ func TestCloudWatchWriterParallel(t *testing.T) {
 func TestCloudWatchWriterClose(t *testing.T) {
 	client := &mockClient{}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
+	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
 
 	// The logs shouldn't have come through yet
 	assert.Equal(t, 0, client.numLogs())
@@ -473,14 +485,14 @@ func TestCloudWatchWriterReportError(t *testing.T) {
 		putLogEventsShouldError: true,
 	}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
+	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
 
-	// give the queueMonitor goroutine time to start up
-	time.Sleep(time.Millisecond)
+	// Prevent queue from getting full
+	time.Sleep(testWaitInterval)
 
 	log1 := exampleLog{
 		Time:     "2009-11-10T23:00:02.043123061Z",
@@ -504,14 +516,14 @@ func TestCloudWatchWriterReceiveInvalidSequenceTokenException(t *testing.T) {
 	// Setup
 	client := &mockClient{}
 
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
-	defer cloudWatchWriter.CloseWithTimeout(100 * time.Millisecond)
+	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
 
-	// give the queueMonitor goroutine time to start up
-	time.Sleep(time.Millisecond)
+	// Prevent queue from getting full
+	time.Sleep(testWaitInterval)
 
 	// At this point the cloudWatchWriter should have the normal sequence token.
 	// So we change the mock cloudwatch client to expect a different sequence
@@ -545,13 +557,13 @@ func TestCloudWatchWriterReceiveInvalidSequenceTokenException(t *testing.T) {
 func TestCloudWatchWriterSendOnClose(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		client := &mockClient{}
-		cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+		cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 		if err != nil {
 			t.Fatalf("NewWithClient: %v", err)
 		}
 
-		// give the queueMonitor goroutine time to start up
-		time.Sleep(time.Millisecond)
+		// Prevent queue from getting full
+		time.Sleep(testWaitInterval)
 
 		numLogs := 100
 		expectedLogs := make([]types.InputLogEvent, numLogs)
@@ -571,7 +583,7 @@ func TestCloudWatchWriterSendOnClose(t *testing.T) {
 		startTime := time.Now()
 		cloudWatchWriter.Close()
 		duration := time.Since(startTime)
-		if duration >= 200*time.Millisecond {
+		if duration >= testBatchInterval {
 			t.Fatal("close sends all the messages straight away so should not have to wait for the next batch")
 		}
 		assertEqualLogMessages(t, expectedLogs, client.getLogEvents())
@@ -580,13 +592,13 @@ func TestCloudWatchWriterSendOnClose(t *testing.T) {
 
 func TestCloudWatchWriterFlushClose(t *testing.T) {
 	client := &mockClient{}
-	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, 200*time.Millisecond, "logGroup", "logStream")
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
 	if err != nil {
 		t.Fatalf("NewWithClient: %v", err)
 	}
 
-	// give the queueMonitor goroutine time to start up
-	time.Sleep(time.Millisecond)
+	// Prevent queue from getting full
+	time.Sleep(testWaitInterval)
 
 	go cloudWatchWriter.Flush()
 	go cloudWatchWriter.Flush()
@@ -595,4 +607,38 @@ func TestCloudWatchWriterFlushClose(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	go cloudWatchWriter.Close()
 	go cloudWatchWriter.Close()
+}
+
+func TestCloudWatchWriterBatchSizeReset(t *testing.T) {
+	client := &mockClient{}
+
+	cloudWatchWriter, err := cloudwatchwriter.NewWithClient(client, testBatchInterval, "logGroup", "logStream")
+	if err != nil {
+		t.Fatalf("NewWithClient: %v", err)
+	}
+	defer cloudWatchWriter.CloseWithTimeout(testBatchIntervalHalf)
+
+	// Prevent queue from getting full
+	time.Sleep(testWaitInterval)
+
+	// Send enough logs to trigger more than one batch
+	logMessage := strings.Repeat("a", 4096)
+	numLogs := (cloudwatchwriter.BatchSizeLimit / (len(logMessage) + cloudwatchwriter.AdditionalBytesPerLogEvent)) * 2
+	var expectedLogs []types.InputLogEvent
+	for range numLogs {
+		_, err = cloudWatchWriter.Write([]byte(logMessage))
+		if err != nil {
+			t.Fatalf("cloudWatchWriter.Write: %v", err)
+		}
+		expectedLogs = append(expectedLogs, types.InputLogEvent{
+			Message:   aws.String(logMessage),
+			Timestamp: aws.Int64(time.Now().UTC().UnixNano() / int64(time.Millisecond)),
+		})
+	}
+
+	if err = client.waitForLogs(numLogs, 400*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+
+	assertEqualLogMessages(t, expectedLogs, client.getLogEvents())
 }

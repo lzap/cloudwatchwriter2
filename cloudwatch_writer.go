@@ -13,28 +13,31 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 )
 
+var (
+	// MinBatchInterval is 200 ms as the maximum rate of PutLogEvents is 5
+	// requests per second. This is required by the AWS CloudWatch Logs API.
+	// Do not change this value unless you know what you are doing. Used for testing only.
+	MinBatchInterval time.Duration = 200 * time.Millisecond
+)
+
 const (
-	// payloadsChannelSize is the size of the channel that holds payloads, default 4k
-	payloadsChannelSize = 4096
+	// PayloadsChannelSize is the size of the channel that holds payloads, default 4k
+	PayloadsChannelSize = 4096
 
-	// minBatchInterval is 200 ms as the maximum rate of PutLogEvents is 5
-	// requests per second.
-	minBatchInterval time.Duration = 200 * time.Millisecond
-
-	// batchSizeLimit is 1MB in bytes, the limit imposed by AWS CloudWatch Logs
+	// BatchSizeLimit is 1MB in bytes, the limit imposed by AWS CloudWatch Logs
 	// on the size the batch of logs we send, see:
 	// https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
-	batchSizeLimit = 1048576
+	BatchSizeLimit = 1048576
 
-	// maxNumLogEvents is the maximum number of messages that can be sent in one
+	// MaxNumLogEvents is the maximum number of messages that can be sent in one
 	// batch, also an AWS limitation, see:
 	// https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
-	maxNumLogEvents = 10000
+	MaxNumLogEvents = 10000
 
-	// additionalBytesPerLogEvent is the number of additional bytes per log
+	// AdditionalBytesPerLogEvent is the number of additional bytes per log
 	// event, other than the length of the log message, see:
 	// https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
-	additionalBytesPerLogEvent = 26
+	AdditionalBytesPerLogEvent = 26
 )
 
 // CloudWatchLogsClient represents the AWS cloudwatchlogs client that we need to talk to CloudWatch
@@ -105,13 +108,13 @@ func (l *LastErr) set(err error) {
 // The writer will flush the buffer and close the payloads channel when Close is called. Use context cancellation to
 // stop the writer and Close to properly close it.
 func NewWithClientContext(ctx context.Context, client CloudWatchLogsClient, batchInterval time.Duration, logGroupName, logStreamName string) (*CloudWatchWriter, error) {
-	if batchInterval < minBatchInterval {
+	if batchInterval < MinBatchInterval {
 		return nil, ErrBatchIntervalTooSmall
 	}
 
 	writer := &CloudWatchWriter{
 		client:   client,
-		payloads: make(chan types.InputLogEvent, payloadsChannelSize),
+		payloads: make(chan types.InputLogEvent, PayloadsChannelSize),
 
 		batchInterval: batchInterval,
 		lastErr:       &LastErr{},
@@ -127,7 +130,7 @@ func NewWithClientContext(ctx context.Context, client CloudWatchLogsClient, batc
 	}
 	writer.nextSequenceToken = logStream.UploadSequenceToken
 
-	ticker := time.NewTicker(minBatchInterval)
+	ticker := time.NewTicker(MinBatchInterval)
 	writer.wg.Add(1)
 	go writer.queueMonitor(ctx, ticker.C)
 
@@ -169,6 +172,7 @@ func (c *CloudWatchWriter) queueMonitor(ctx context.Context, ticker <-chan time.
 
 	sendPayloads := func() {
 		c.sendBatch(ctx, batch, 0)
+		batchSize = 0
 		batch = nil
 	}
 
@@ -190,7 +194,7 @@ func (c *CloudWatchWriter) queueMonitor(ctx context.Context, ticker <-chan time.
 				continue
 			}
 
-			messageSize := len(*event.Message) + additionalBytesPerLogEvent
+			messageSize := len(*event.Message) + AdditionalBytesPerLogEvent
 			// Make sure the time is monotonic - the input time is ignored.
 			// AWS expects the timestamp to be in milliseconds since the epoch.
 			event.Timestamp = aws.Int64(time.Now().UTC().UnixMilli())
@@ -198,11 +202,11 @@ func (c *CloudWatchWriter) queueMonitor(ctx context.Context, ticker <-chan time.
 			batchSize += messageSize
 			c.Stats.QueuedEventCount.Add(1)
 
-			if batchSize+messageSize > batchSizeLimit {
+			if batchSize+messageSize > BatchSizeLimit {
 				sendPayloads()
 			}
 
-			if len(batch) >= maxNumLogEvents {
+			if len(batch) >= MaxNumLogEvents {
 				sendPayloads()
 			}
 
