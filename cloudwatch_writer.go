@@ -309,14 +309,17 @@ func (c *CloudWatchWriter) getOrCreateLogStream() (*types.LogStream, error) {
 		LogGroupName:        c.logGroupName,
 		LogStreamNamePrefix: c.logStreamName,
 	})
-	if err != nil || output == nil {
+	if err != nil {
 		// i.e. the log group does not exist
-		if _, ok := err.(*types.ResourceNotFoundException); !ok {
+		if _, ok := err.(*types.ResourceNotFoundException); ok {
 			_, err = c.client.CreateLogGroup(context.Background(), &cloudwatchlogs.CreateLogGroupInput{
 				LogGroupName: c.logGroupName,
 			})
 			if err != nil {
-				return nil, fmt.Errorf("cloudwatchlog.Client.CreateLogGroup: %w", err)
+				// In case another process created the log group in the meantime
+				if _, ok := err.(*types.ResourceAlreadyExistsException); !ok {
+					return nil, fmt.Errorf("cloudwatchlog.Client.CreateLogGroup: %w", err)
+				}
 			}
 			return c.getOrCreateLogStream()
 		}
