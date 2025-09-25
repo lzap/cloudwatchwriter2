@@ -56,7 +56,7 @@ type CloudWatchWriter struct {
 	client CloudWatchLogsClient
 
 	payloads  chan types.InputLogEvent
-	active    atomic.Bool
+	wg        sync.WaitGroup
 	closeOnce sync.Once
 	flushMu   sync.Mutex
 
@@ -128,7 +128,7 @@ func NewWithClientContext(ctx context.Context, client CloudWatchLogsClient, batc
 	writer.nextSequenceToken = logStream.UploadSequenceToken
 
 	ticker := time.NewTicker(minBatchInterval)
-	writer.active.Store(true)
+	writer.wg.Add(1)
 	go writer.queueMonitor(ctx, ticker.C)
 
 	return writer, nil
@@ -165,7 +165,7 @@ var flushEvent = types.InputLogEvent{}
 func (c *CloudWatchWriter) queueMonitor(ctx context.Context, ticker <-chan time.Time) {
 	var batch []types.InputLogEvent
 	var batchSize int
-	defer c.active.Store(false)
+	defer c.wg.Done()
 
 	sendPayloads := func() {
 		c.sendBatch(batch, 0)
@@ -277,19 +277,18 @@ func (c *CloudWatchWriter) CloseWithTimeout(timeout time.Duration) error {
 
 	var result error
 	c.closeOnce.Do(func() {
-		if !c.active.Load() {
-			return
-		}
 		close(c.payloads)
 
-		timeout := time.Now().Add(timeout)
-		for c.active.Load() {
-			time.Sleep(10 * time.Millisecond)
+		done := make(chan struct{})
+		go func() {
+			c.wg.Wait()
+			close(done)
+		}()
 
-			if time.Now().After(timeout) {
-				result = ErrCloseTimeout
-				break
-			}
+		select {
+		case <-done:
+		case <-time.After(timeout):
+			result = ErrCloseTimeout
 		}
 	})
 
