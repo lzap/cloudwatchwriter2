@@ -107,6 +107,8 @@ func (l *LastErr) set(err error) {
 // Use Close method to properly close the writer. The writer will not accept any new events after Close is called.
 // The writer will flush the buffer and close the payloads channel when Close is called. Use context cancellation to
 // stop the writer and Close to properly close it.
+//
+// Log group and log stream will be created immediately if they do not exist. There is no lazy-initialization supported.
 func NewWithClientContext(ctx context.Context, client CloudWatchLogsClient, batchInterval time.Duration, logGroupName, logStreamName string) (*CloudWatchWriter, error) {
 	if batchInterval < MinBatchInterval {
 		return nil, ErrBatchIntervalTooSmall
