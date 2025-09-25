@@ -19,7 +19,7 @@ const (
 
 	// minBatchInterval is 200 ms as the maximum rate of PutLogEvents is 5
 	// requests per second.
-	minBatchInterval time.Duration = 200000000
+	minBatchInterval time.Duration = 200 * time.Millisecond
 
 	// batchSizeLimit is 1MB in bytes, the limit imposed by AWS CloudWatch Logs
 	// on the size the batch of logs we send, see:
