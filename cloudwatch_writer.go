@@ -2,6 +2,7 @@ package cloudwatchwriter2
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -69,14 +70,14 @@ type CloudWatchWriter struct {
 	logStreamName     *string
 	nextSequenceToken *string
 
-	Stats Stats
+	Stats *Stats
 }
 
 type Stats struct {
 	// Total number of events queued for sending
 	QueuedEventCount atomic.Uint64
 
-	// Total number of events sent (EventsEnqueued >= SentEventCount)
+	// Total number of events sent (QueuedEventCount >= SentEventCount)
 	SentEventCount atomic.Uint64
 
 	// Total number of requests sent
@@ -84,6 +85,9 @@ type Stats struct {
 
 	// Total number of HTTP retries
 	RetryCount atomic.Uint64
+
+	// Total number of errors occurred
+	ErrorCount atomic.Uint64
 }
 
 type LastErr struct {
@@ -103,12 +107,21 @@ func (l *LastErr) set(err error) {
 	l.err = err
 }
 
-// NewWithClientContext creates a new CloudWatchWriter with the given client, batch interval, log group name and log stream name.
-// Use Close method to properly close the writer. The writer will not accept any new events after Close is called.
-// The writer will flush the buffer and close the payloads channel when Close is called. Use context cancellation to
-// stop the writer and Close to properly close it.
+// NewWithClientContext creates a new CloudWatchWriter with the given client,
+// batch interval, log group name and log stream name. Use Close method to
+// properly close the writer. The writer will not accept any new events after
+// Close is called. The writer will flush the buffer and close the payloads
+// channel when Close is called. Use context cancellation to stop the writer and
+// Close to properly close it.
 //
-// Log group and log stream will be created immediately if they do not exist. There is no lazy-initialization supported.
+// Log group must exist prior creating the client, log stream will be created
+// immediately if it does not exist. There is no lazy-initialization supported,
+// the log stream is created during the NewWithClientContext call.
+//
+// The batch interval must be at least MinBatchInterval (200ms) as the maximum
+// rate of PutLogEvents is 5 requests per second. This is required by the AWS
+// CloudWatch Logs API. If the batch interval is smaller than MinBatchInterval,
+// ErrBatchIntervalTooSmall is returned.
 func NewWithClientContext(ctx context.Context, client CloudWatchLogsClient, batchInterval time.Duration, logGroupName, logStreamName string) (*CloudWatchWriter, error) {
 	if batchInterval < MinBatchInterval {
 		return nil, ErrBatchIntervalTooSmall
@@ -123,7 +136,7 @@ func NewWithClientContext(ctx context.Context, client CloudWatchLogsClient, batc
 
 		logGroupName:  aws.String(logGroupName),
 		logStreamName: aws.String(logStreamName),
-		Stats:         Stats{},
+		Stats:         &Stats{},
 	}
 
 	logStream, err := writer.getOrCreateLogStream(ctx)
@@ -142,6 +155,11 @@ func NewWithClientContext(ctx context.Context, client CloudWatchLogsClient, batc
 // NewWithClient does the same as NewWithClientContext but uses context.Background() as the context.
 func NewWithClient(client CloudWatchLogsClient, batchInterval time.Duration, logGroupName, logStreamName string) (*CloudWatchWriter, error) {
 	return NewWithClientContext(context.Background(), client, batchInterval, logGroupName, logStreamName)
+}
+
+func (c *CloudWatchWriter) error(err error) {
+	c.Stats.ErrorCount.Add(1)
+	c.lastErr.set(err)
 }
 
 func (c *CloudWatchWriter) Write(log []byte) (int, error) {
@@ -199,7 +217,14 @@ func (c *CloudWatchWriter) queueMonitor(ctx context.Context, ticker <-chan time.
 				continue
 			}
 
-			messageSize := len(*event.Message) + AdditionalBytesPerLogEvent
+			// Serialize the event and calculate its real size.
+			serializedEvent, err := json.Marshal(event)
+			if err != nil {
+				c.error(err)
+				return
+			}
+			messageSize := len(serializedEvent) + AdditionalBytesPerLogEvent
+
 			// Make sure the time is monotonic - the input time is ignored.
 			// AWS expects the timestamp to be in milliseconds since the epoch.
 			event.Timestamp = aws.Int64(time.Now().UTC().UnixMilli())
@@ -243,7 +268,7 @@ func (c *CloudWatchWriter) sendBatch(ctx context.Context, batch []types.InputLog
 			c.sendBatch(ctx, batch, retryNum+1)
 			return
 		}
-		c.lastErr.set(err)
+		c.error(err)
 		return
 	}
 

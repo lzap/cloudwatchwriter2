@@ -34,6 +34,9 @@ func main() {
 		fmt.Printf("Total logs queued: %d\n", cloudWatchWriter.Stats.QueuedEventCount.Load())
 		fmt.Printf("Total logs sent: %d\n", cloudWatchWriter.Stats.SentEventCount.Load())
 		fmt.Printf("Total batches: %d\n", cloudWatchWriter.Stats.BatchCount.Load())
+		fmt.Printf("Total retries: %d\n", cloudWatchWriter.Stats.RetryCount.Load())
+		fmt.Printf("Total errors: %d\n", cloudWatchWriter.Stats.ErrorCount.Load())
+		
 	}()
 	defer func() {
 		cloudWatchWriter.Flush()
@@ -47,9 +50,14 @@ func main() {
 	h := slog.NewJSONHandler(cloudWatchWriter, &slog.HandlerOptions{})
 	slog.SetDefault(slog.New(h))
 
+	for j := 1; j <= 10; j++ {
+		time.Sleep(105 * time.Millisecond)
+		for i := 1; i <= 10; i++ {
+			slog.Info("this is a test log message", "from", "slog", "i", i)
+		}
+	}
+
 	for i := 1; i <= 10000; i++ {
 		slog.Info("this is a test log message", "from", "slog", "i", i)
 	}
-
-	time.Sleep(2 * time.Second)
 }
