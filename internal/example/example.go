@@ -36,6 +36,7 @@ func main() {
 		fmt.Printf("Total batches: %d\n", cloudWatchWriter.Stats.BatchCount.Load())
 	}()
 	defer func() {
+		cloudWatchWriter.Flush()
 		err := cloudWatchWriter.Close()
 		if err != nil {
 			fmt.Printf("Close: %v\n", err)
@@ -49,4 +50,6 @@ func main() {
 	for i := 1; i <= 10000; i++ {
 		slog.Info("this is a test log message", "from", "slog", "i", i)
 	}
+
+	time.Sleep(2 * time.Second)
 }
