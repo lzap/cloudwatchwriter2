@@ -178,7 +178,7 @@ func (c *CloudWatchWriter) queueMonitor(ctx context.Context, ticker <-chan time.
 	sendPayloads := func() {
 		c.sendBatch(ctx, batch, 0)
 		batchSize = 0
-		batch = nil
+		batch = batch[:0]
 	}
 
 	for {
