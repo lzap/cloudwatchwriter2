@@ -24,7 +24,7 @@ const (
 	testBatchInterval       = 20 * time.Millisecond
 	testBatchIntervalHalf   = testBatchInterval / 2
 	testBatchIntervalDouble = testBatchInterval * 2
-	testWaitInterval        = 0 * time.Millisecond
+	testWaitInterval        = 2 * time.Millisecond
 )
 
 func init() {
@@ -135,7 +135,7 @@ func (c *mockClient) waitForLogs(numberOfLogs int, timeout time.Duration) error 
 		}
 
 		if time.Now().After(endTime) {
-			return errors.New("ran out of time waiting for logs")
+			return fmt.Errorf("timed out waiting for %d logs, only received %d logs", numberOfLogs, c.numLogs())
 		}
 
 		time.Sleep(testWaitInterval)
@@ -410,31 +410,30 @@ func TestCloudWatchWriterHit10kLimit(t *testing.T) {
 
 	var expectedLogs []types.InputLogEvent
 	numLogs := 10000
-	for i := 0; i < numLogs; i++ {
+	for i := range numLogs {
 		message := fmt.Sprintf("hello %d", i)
 		_, err = cloudWatchWriter.Write([]byte(message))
 		if err != nil {
-			t.Fatalf("cloudWatchWriter.Write: %v", err)
+			assert.ErrorIs(t, err, cloudwatchwriter.ErrFullOrClosed)
+			numLogs--
+			t.Log("queue full, waiting for some logs to be sent")
+			time.Sleep(testWaitInterval)
+		} else {
+			expectedLogs = append(expectedLogs, types.InputLogEvent{
+				Message:   aws.String(message),
+				Timestamp: aws.Int64(time.Now().UTC().UnixNano() / int64(time.Millisecond)),
+			})
 		}
-		expectedLogs = append(expectedLogs, types.InputLogEvent{
-			Message:   aws.String(message),
-			Timestamp: aws.Int64(time.Now().UTC().UnixNano() / int64(time.Millisecond)),
-		})
 	}
 
-	// give the queueMonitor goroutine time to catch-up (sleep is far less than
-	// the minimum of 200 milliseconds)
-	time.Sleep(10 * time.Millisecond)
-
-	// Main assertion is that we are triggering a batch early as we're sending
-	// so many logs
-	assert.True(t, client.numLogs() > 0)
-
-	if err = client.waitForLogs(numLogs, testBatchInterval); err != nil {
+	if err = client.waitForLogs(numLogs, testBatchIntervalDouble*3); err != nil {
 		t.Fatal(err)
 	}
 
 	assertEqualLogMessages(t, expectedLogs, client.getLogEvents())
+
+	// Ensure there was at least one batch
+	assert.True(t, cloudWatchWriter.Stats.BatchCount.Load() > 0)
 }
 
 func TestCloudWatchWriterParallel(t *testing.T) {

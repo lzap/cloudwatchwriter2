@@ -85,7 +85,7 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 // After close is called the client will not accept any new events, all attemtps
 // to send new events will return ErrFullOrClosed. Use CloseWithTimeout to
 // specify a custom timeout.
-func (h *Handler) Close() error{
+func (h *Handler) Close() error {
 	if h.client == nil {
 		return nil
 	}
